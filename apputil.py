@@ -119,16 +119,43 @@ def _load_bellevue() -> pd.DataFrame:
 # -------------------------
 def task_1() -> list[str]:
     """Return column names sorted from least to most missing values.
-    Ties are broken alphabetically by column name.
+    Uses the *raw* dataset (no global object cleaning) and fixes only
+    the gender column issue, per the exercise note. Ties are broken
+    alphabetically by column name.
     """
-    df = _load_bellevue()
+    # Load RAW df exactly like the lab (URL first, then local fallbacks)
+    df: Optional[pd.DataFrame] = None
+    try:
+        df = pd.read_csv(_URL)
+    except Exception:
+        df = None
+    if df is None:
+        for p in _FALLBACK_PATHS:
+            try:
+                df = pd.read_csv(p)
+                break
+            except Exception:
+                continue
+    if df is None:
+        raise FileNotFoundError(
+            "Bellevue dataset CSV not found or reachable for task_1."
+        )
+
+    # Fix ONLY the gender column quirk (strip/lower; empty -> NaN)
+    if "gender" in df.columns:
+        s = df["gender"].astype(str).str.strip()
+        # do not touch other object cols; keep them exactly as-is
+        s = s.replace({"": np.nan})
+        df["gender"] = s.str.lower()
+
+    # Now compute missing counts on this minimally cleaned (raw) frame
     na_counts = df.isna().sum()
 
-    # Robust: make a frame with explicit column names, then sort
+    # Sort by (missing asc, column name asc) for deterministic ties
     order = (
         na_counts
-        .to_frame(name="na")          # explicit name for counts
-        .reset_index()                # 'index' holds the column names
+        .to_frame(name="na")
+        .reset_index()
         .rename(columns={"index": "column"})
         .sort_values(by=["na", "column"], ascending=[True, True])
         ["column"]
