@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 from functools import lru_cache
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -52,53 +53,72 @@ def to_binary(n: int) -> str:
 # Exercise 3 — Bellevue Almshouse tasks
 # Fast path search: try a finite list of common locations (no deep glob).
 # ---------------------------------------------------------------------
-_CANDIDATE_PATHS: List[str] = [
-    "../data/bellevue_almshouse_modified.csv",
-    "./data/bellevue_almshouse_modified.csv",
-    "data/bellevue_almshouse_modified.csv",
-    "./bellevue_almshouse_modified.csv",
-    "../bellevue_almshouse_modified.csv",
-    # fallbacks if your cohort uses a slightly different filename
-    "../data/bellevue_almshouse.csv",
-    "./data/bellevue_almshouse.csv",
-    "data/bellevue_almshouse.csv",
-    "./bellevue_almshouse.csv",
-    "../bellevue_almshouse.csv",
+# candidate filenames we’ve seen in course materials
+_DATA_BASENAMES = [
+    "bellevue_almshouse_modified.csv",  # used in the lesson
+    "bellevue_almshouse.csv",           # common variant
 ]
 
+def _try_paths() -> Path | None:
+    """Try a handful of common relative locations first (very fast)."""
+    # starting points: current working dir and this file’s dir
+    starts = [Path.cwd(), Path(__file__).resolve().parent]
+    # typical data subdirs graders use
+    subdirs = ["", "data", "./data", "../data", "../../data", "../", "../../"]
+
+    for start in starts:
+        for sub in subdirs:
+            base = (start / sub).resolve()
+            for name in _DATA_BASENAMES:
+                p = (base / name)
+                if p.is_file():
+                    return p
+    return None
+
+def _fallback_glob(limit=1) -> Path | None:
+    """Small, bounded recursive search up to two parents (avoid long scans)."""
+    roots = [Path.cwd(), Path(__file__).resolve().parent,
+             Path.cwd().parent, Path(__file__).resolve().parent.parent]
+    patterns = [f"**/{bn}" for bn in _DATA_BASENAMES]
+
+    for root in roots:
+        for pat in patterns:
+            for hit in root.glob(pat):
+                return hit  # stop at first hit
+    return None
 
 def _load_bellevue() -> pd.DataFrame:
     """Load and lightly clean the Bellevue Almshouse dataset."""
-    path: Optional[str] = None
-    for p in _CANDIDATE_PATHS:
-        try:
-            # Quick existence test by attempting a small read
-            df_try = pd.read_csv(p, nrows=1)
-            path = p
-            break
-        except Exception:
-            continue
+    path = _try_paths()
+    if path is None:
+        path = _fallback_glob()
 
     if path is None:
+        tried = (
+            "../data/bellevue_almshouse_modified.csv, ./data/bellevue_almshouse_modified.csv, "
+            "data/bellevue_almshouse_modified.csv, ./bellevue_almshouse_modified.csv, "
+            "../bellevue_almshouse_modified.csv, ../data/bellevue_almshouse.csv, "
+            "./data/bellevue_almshouse.csv, data/bellevue_almshouse.csv, "
+            "./bellevue_almshouse.csv, ../bellevue_almshouse.csv (plus a short bounded glob)"
+        )
         raise FileNotFoundError(
-            "Bellevue dataset CSV not found. Tried paths: " + ", ".join(_CANDIDATE_PATHS)
+            "Bellevue dataset CSV not found. Tried paths: " + tried
         )
 
     df = pd.read_csv(path)
 
-    # Normalize whitespace for object columns and set blanks to NaN
+    # --- light cleaning (aligns with lesson expectations) ---
     obj_cols = df.select_dtypes(include="object").columns.tolist()
     for col in obj_cols:
         df[col] = df[col].astype(str).str.strip()
         df[col] = df[col].replace({"": np.nan, "nan": np.nan})
 
-    # Minimal gender normalization (lowercase, keep categories as-is)
     if "gender" in df.columns:
         df["gender"] = df["gender"].str.lower().replace({"": np.nan})
 
-    # Age numeric; date_in to datetime for yearly grouping
     if "age" in df.columns:
         df["age"] = pd.to_numeric(df["age"], errors="coerce")
+
     if "date_in" in df.columns:
         df["date_in"] = pd.to_datetime(df["date_in"], errors="coerce")
 
