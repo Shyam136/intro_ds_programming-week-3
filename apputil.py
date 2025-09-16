@@ -119,7 +119,7 @@ def _load_bellevue() -> pd.DataFrame:
 # -------------------------
 def task_1() -> list[str]:
     """Return column names sorted from least to most missing values.
-    Fix only the gender column quirk; tie-breaks are alphabetical.
+    Fix only the gender column quirk. Ties break alphabetically.
     """
     # Load like the lab (URL first, then local fallbacks)
     df: Optional[pd.DataFrame] = None
@@ -137,18 +137,18 @@ def task_1() -> list[str]:
     if df is None:
         raise FileNotFoundError("Bellevue dataset CSV not found for task_1.")
 
-    # Fix ONLY gender: normalize case/whitespace and convert common string-missings
+    # --- Fix ONLY gender ---
+    # Normalize whitespace/case
     if "gender" in df.columns:
         s = df["gender"].astype(str).str.strip().str.lower()
-        s = s.replace({
-            "": np.nan,
-            "nan": np.nan,
-            "na": np.nan,
-            "none": np.nan
-        })
+        # convert common string-missings to NaN
+        s = s.replace({"": np.nan, "nan": np.nan, "na": np.nan, "none": np.nan})
+        # keep ONLY valid codes seen in the lesson/dataset; everything else -> NaN
+        valid = {"m", "w"}
+        s = s.where(s.isin(valid), np.nan)
         df["gender"] = s
 
-    # Compute missing counts and sort by (na asc, column asc) for deterministic ties
+    # Sort by (missing asc, column name asc)
     order = (
         df.isna().sum()
         .to_frame(name="na")
