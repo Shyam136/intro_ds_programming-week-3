@@ -117,11 +117,22 @@ def _load_bellevue() -> pd.DataFrame:
 # -------------------------
 # Task 1
 # -------------------------
-def task_1() -> List[str]:
-    """Return column names sorted from least to most missing values."""
+def task_1() -> list[str]:
+    """Return column names sorted from least to most missing values.
+    Ties are broken alphabetically by column name.
+    """
     df = _load_bellevue()
-    na_counts = df.isna().sum().sort_values(ascending=True)
-    return na_counts.index.tolist()
+    na_counts = df.isna().sum()
+
+    # Build a small frame so we can sort by (missing asc, name asc)
+    order = (
+        na_counts.reset_index()
+        .rename(columns={"index": "column", 0: "na"})
+        .sort_values(by=["na", "column"], ascending=[True, True])
+        ["column"]
+        .tolist()
+    )
+    return order
 
 
 # -------------------------
